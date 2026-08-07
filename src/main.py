@@ -1,6 +1,8 @@
+# from eda import profiler
 from src.data.validator import DataValidator
 from src.config import DATASET_PATH
 from src.data.loader import DataLoader
+from src.eda.profiler import DataProfiler
 
 
 def main():
@@ -14,6 +16,9 @@ def main():
     df = loader.load()
     validator = DataValidator(df)
     validator.validate()
+
+    profiler = DataProfiler(df)
+    profiler.profile()
 
     print("\nDataset Loaded Successfully!")
     # print(f"Rows    : {df.shape[0]}")
