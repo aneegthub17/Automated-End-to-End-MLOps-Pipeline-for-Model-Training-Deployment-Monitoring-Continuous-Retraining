@@ -13,15 +13,11 @@ def main():
 
     df = loader.load()
     validator = DataValidator(df)
-    
-    validator.validate_shape()
-    
-    validator.validate_columns()
-    validator.validate_missing_values()
+    validator.validate()
 
     print("\nDataset Loaded Successfully!")
-    print(f"Rows    : {df.shape[0]}")
-    print(f"Columns : {df.shape[1]}")
+    # print(f"Rows    : {df.shape[0]}")
+    # print(f"Columns : {df.shape[1]}")
 
     print("\nFirst Five Records\n")
     print(df.head())

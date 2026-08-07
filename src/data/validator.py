@@ -67,4 +67,35 @@ class DataValidator:
 
         missing = self.df.isnull().sum()
 
+        missing = missing[missing > 0]
+
+        if missing.empty:
+            print("✓ No missing values found.")
+            return
+
+        print("⚠ Missing values detected:\n")
         print(missing)
+
+        raise ValueError("Dataset contains missing values.")
+    def validate_duplicates(self):
+
+        print("\n========== Duplicate Validation ==========")
+
+        duplicate_count = self.df.duplicated().sum()
+
+        if duplicate_count == 0:
+            print("✓ No duplicate rows found.")
+        else:
+            print(f"⚠ Duplicate rows found: {duplicate_count}")
+
+            raise ValueError(
+             f"Dataset contains {duplicate_count} duplicate rows."
+            )
+    def validate(self):
+         
+           # Runs all validation checks in sequencee 
+        self.validate_shape()
+        self.validate_columns()
+        self.validate_missing_values()
+        self.validate_duplicates()
+        print("\n✅ Data Validation Completed Successfully.")
