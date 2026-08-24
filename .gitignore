@@ -39,10 +39,9 @@ mlflow.db
 mlruns/
 
 # ============================================================
-# Generated Python / ML artifacts
+# Generated ML artifacts
 # ============================================================
 
-*.joblib
 *.pkl
 *.pickle
 *.skops
@@ -50,10 +49,16 @@ mlruns/
 # Ignore generated artifacts by default
 artifacts/
 
-# BUT keep the production model required by the API
+# Keep production model required by the API
 !artifacts/
 !artifacts/models/
 !artifacts/models/logistic_regression_production.joblib
+
+# ============================================================
+# Monitoring Runtime Data
+# ============================================================
+
+experiments/
 
 # ============================================================
 # Test / Cache
