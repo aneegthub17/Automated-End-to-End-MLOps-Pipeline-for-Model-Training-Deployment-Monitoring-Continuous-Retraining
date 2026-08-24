@@ -7,6 +7,8 @@ from src.preprocessing.pipeline import DataPreprocessor
 from src.models.trainer import ModelTrainer
 from src.models.evaluator import ModelEvaluator
 
+from src.training.mlflow_tracker import MLflowTracker
+
 
 def main():
 
@@ -14,29 +16,35 @@ def main():
     # PIPELINE HEADER
     # ==================================================
 
-    print("=" * 50)
-    print(" Enterprise MLOps Pipeline ")
-    print("=" * 50)
+    print("=" * 60)
+    print("             Enterprise MLOps Pipeline")
+    print("=" * 60)
 
     # ==================================================
     # 1. DATA INGESTION
     # ==================================================
 
-    print("\n[1/7] DATA INGESTION")
+    print("\n[1/8] DATA INGESTION")
 
-    loader = DataLoader(DATASET_PATH)
+    loader = DataLoader(
+        DATASET_PATH
+    )
 
     df = loader.load()
 
-    print("✓ Dataset loaded successfully.")
+    print(
+        "✓ Dataset loaded successfully."
+    )
 
     # ==================================================
     # 2. DATA VALIDATION
     # ==================================================
 
-    print("\n[2/7] DATA VALIDATION")
+    print("\n[2/8] DATA VALIDATION")
 
-    validator = DataValidator(df)
+    validator = DataValidator(
+        df
+    )
 
     validator.validate()
 
@@ -44,9 +52,11 @@ def main():
     # 3. DATA PROFILING
     # ==================================================
 
-    print("\n[3/7] DATA PROFILING")
+    print("\n[3/8] DATA PROFILING")
 
-    profiler = DataProfiler(df)
+    profiler = DataProfiler(
+        df
+    )
 
     profiler.profile()
 
@@ -54,9 +64,11 @@ def main():
     # 4. TRAIN / TEST SPLIT
     # ==================================================
 
-    print("\n[4/7] DATA SPLITTING")
+    print("\n[4/8] DATA SPLITTING")
 
-    preprocessor = DataPreprocessor(df)
+    preprocessor = DataPreprocessor(
+        df
+    )
 
     (
         X_train,
@@ -85,7 +97,7 @@ def main():
     # 5. PREPROCESSING
     # ==================================================
 
-    print("\n[5/7] DATA PREPROCESSING")
+    print("\n[5/8] DATA PREPROCESSING")
 
     (
         X_train_processed,
@@ -114,7 +126,7 @@ def main():
     # 6. MODEL TRAINING
     # ==================================================
 
-    print("\n[6/7] MODEL TRAINING")
+    print("\n[6/8] MODEL TRAINING")
 
     trainer = ModelTrainer()
 
@@ -127,7 +139,7 @@ def main():
     # 7. MODEL EVALUATION
     # ==================================================
 
-    print("\n[7/7] MODEL EVALUATION")
+    print("\n[7/8] MODEL EVALUATION")
 
     evaluator = ModelEvaluator()
 
@@ -138,7 +150,7 @@ def main():
     )
 
     # ==================================================
-    # DISPLAY MODEL RESULTS
+    # DISPLAY RESULTS
     # ==================================================
 
     print("\n")
@@ -192,44 +204,130 @@ def main():
         metric="f1"
     )
 
+    best_metrics = results[
+        best_model_name
+    ]
+
     print("\n")
     print("=" * 60)
     print("                  BEST MODEL")
     print("=" * 60)
 
     print(
-        f"\nModel    : {best_model_name}"
+        f"\nModel     : {best_model_name}"
     )
 
     print(
-        f"F1 Score : "
-        f"{results[best_model_name]['f1']:.4f}"
+        f"F1 Score  : "
+        f"{best_metrics['f1']:.4f}"
     )
 
     print(
-        f"Accuracy : "
-        f"{results[best_model_name]['accuracy']:.4f}"
+        f"Accuracy  : "
+        f"{best_metrics['accuracy']:.4f}"
     )
 
     print(
-        f"Precision: "
-        f"{results[best_model_name]['precision']:.4f}"
+        f"Precision : "
+        f"{best_metrics['precision']:.4f}"
     )
 
     print(
-        f"Recall   : "
-        f"{results[best_model_name]['recall']:.4f}"
+        f"Recall    : "
+        f"{best_metrics['recall']:.4f}"
     )
 
     print(
-        f"ROC-AUC  : "
-        f"{results[best_model_name]['roc_auc']:.4f}"
+        f"ROC-AUC   : "
+        f"{best_metrics['roc_auc']:.4f}"
     )
+
+    # ==================================================
+    # 8. MLFLOW EXPERIMENT TRACKING
+    # ==================================================
+
+    print("\n[8/8] MLFLOW EXPERIMENT TRACKING")
+
+    tracker = MLflowTracker()
+
+    print(
+        "\nExperiment:"
+        " Customer Churn Prediction"
+    )
+
+    # --------------------------------------------------
+    # Track every model
+    # --------------------------------------------------
+
+    for model_name, model in models.items():
+
+        print(
+            f"\nLogging run: {model_name}"
+        )
+
+        tracker.start_run(
+            model_name
+        )
+
+        try:
+
+            tracker.log_model_run(
+                model_name,
+                model,
+                results[model_name]
+            )
+
+            print(
+                f"✓ {model_name} logged to MLflow."
+            )
+
+        finally:
+
+            tracker.end_run()
+
+    # --------------------------------------------------
+    # Track best model
+    # --------------------------------------------------
+
+    print(
+        "\nLogging best model..."
+    )
+
+    tracker.start_run(
+        f"best_{best_model_name}"
+    )
+
+    try:
+
+        tracker.log_best_model(
+            best_model,
+            best_model_name,
+            best_metrics
+        )
+
+        print(
+            "✓ Best model logged to MLflow."
+        )
+
+    finally:
+
+        tracker.end_run()
+
+    # ==================================================
+    # COMPLETION
+    # ==================================================
 
     print("\n")
     print("=" * 60)
-    print("       ML TRAINING PIPELINE COMPLETED")
+    print(
+        "       MLOps TRAINING PIPELINE COMPLETED"
+    )
     print("=" * 60)
+
+    print(
+        "\nMLflow tracking database:"
+        " mlflow.db"
+    )
 
 
 if __name__ == "__main__":
