@@ -6,6 +6,7 @@ from src.preprocessing.pipeline import DataPreprocessor
 
 from src.models.trainer import ModelTrainer
 from src.models.evaluator import ModelEvaluator
+from src.models.registry import ModelRegistry
 
 from src.training.mlflow_tracker import MLflowTracker
 
@@ -24,7 +25,7 @@ def main():
     # 1. DATA INGESTION
     # ==================================================
 
-    print("\n[1/8] DATA INGESTION")
+    print("\n[1/9] DATA INGESTION")
 
     loader = DataLoader(
         DATASET_PATH
@@ -40,7 +41,7 @@ def main():
     # 2. DATA VALIDATION
     # ==================================================
 
-    print("\n[2/8] DATA VALIDATION")
+    print("\n[2/9] DATA VALIDATION")
 
     validator = DataValidator(
         df
@@ -52,7 +53,7 @@ def main():
     # 3. DATA PROFILING
     # ==================================================
 
-    print("\n[3/8] DATA PROFILING")
+    print("\n[3/9] DATA PROFILING")
 
     profiler = DataProfiler(
         df
@@ -64,7 +65,7 @@ def main():
     # 4. TRAIN / TEST SPLIT
     # ==================================================
 
-    print("\n[4/8] DATA SPLITTING")
+    print("\n[4/9] DATA SPLITTING")
 
     preprocessor = DataPreprocessor(
         df
@@ -94,10 +95,10 @@ def main():
     )
 
     # ==================================================
-    # 5. PREPROCESSING
+    # 5. DATA PREPROCESSING
     # ==================================================
 
-    print("\n[5/8] DATA PREPROCESSING")
+    print("\n[5/9] DATA PREPROCESSING")
 
     (
         X_train_processed,
@@ -126,7 +127,7 @@ def main():
     # 6. MODEL TRAINING
     # ==================================================
 
-    print("\n[6/8] MODEL TRAINING")
+    print("\n[6/9] MODEL TRAINING")
 
     trainer = ModelTrainer()
 
@@ -139,7 +140,7 @@ def main():
     # 7. MODEL EVALUATION
     # ==================================================
 
-    print("\n[7/8] MODEL EVALUATION")
+    print("\n[7/9] MODEL EVALUATION")
 
     evaluator = ModelEvaluator()
 
@@ -150,7 +151,7 @@ def main():
     )
 
     # ==================================================
-    # DISPLAY RESULTS
+    # DISPLAY MODEL RESULTS
     # ==================================================
 
     print("\n")
@@ -246,7 +247,7 @@ def main():
     # 8. MLFLOW EXPERIMENT TRACKING
     # ==================================================
 
-    print("\n[8/8] MLFLOW EXPERIMENT TRACKING")
+    print("\n[8/9] MLFLOW EXPERIMENT TRACKING")
 
     tracker = MLflowTracker()
 
@@ -256,7 +257,7 @@ def main():
     )
 
     # --------------------------------------------------
-    # Track every model
+    # Log every trained model
     # --------------------------------------------------
 
     for model_name, model in models.items():
@@ -286,7 +287,7 @@ def main():
             tracker.end_run()
 
     # --------------------------------------------------
-    # Track best model
+    # Log the best model
     # --------------------------------------------------
 
     print(
@@ -314,19 +315,70 @@ def main():
         tracker.end_run()
 
     # ==================================================
+    # 9. PRODUCTION MODEL REGISTRY
+    # ==================================================
+
+    print("\n[9/9] PRODUCTION MODEL REGISTRY")
+
+    registry = ModelRegistry()
+
+    production_model_path = registry.save_model(
+        model=best_model,
+        preprocessor=preprocessing_pipeline,
+        model_name=best_model_name,
+        metrics=best_metrics
+    )
+
+    # --------------------------------------------------
+    # Verify that the artifact can be loaded
+    # --------------------------------------------------
+
+    print(
+        "\nVerifying production artifact..."
+    )
+
+    loaded_artifact = registry.load_model(
+        best_model_name
+    )
+
+    print(
+        "\n✓ Production artifact verification successful."
+    )
+
+    print(
+        f"Loaded Model : "
+        f"{loaded_artifact['model_name']}"
+    )
+
+    print(
+        "✓ Preprocessor loaded successfully."
+    )
+
+    print(
+        "✓ Model loaded successfully."
+    )
+
+    # ==================================================
     # COMPLETION
     # ==================================================
 
     print("\n")
     print("=" * 60)
     print(
-        "       MLOps TRAINING PIPELINE COMPLETED"
+        "       COMPLETE MLOPS TRAINING PIPELINE"
     )
     print("=" * 60)
 
     print(
-        "\nMLflow tracking database:"
-        " mlflow.db"
+        "\nProduction Artifact:"
+    )
+
+    print(
+        f"{production_model_path}"
+    )
+
+    print(
+        "\nPipeline completed successfully."
     )
 
 
