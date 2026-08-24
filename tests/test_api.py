@@ -64,3 +64,24 @@ def test_prediction_endpoint():
 
     assert data["prediction"] in ["Yes", "No"]
     assert 0 <= data["churn_probability"] <= 1
+def test_monitoring_endpoint():
+
+    response = client.get("/monitoring")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["status"] == "monitoring_active"
+
+    assert "model" in data
+
+    assert "metrics" in data
+
+    assert "total_predictions" in data["metrics"]
+
+    assert "average_churn_probability" in data["metrics"]
+
+    assert "predicted_churn" in data["metrics"]
+
+    assert "predicted_no_churn" in data["metrics"]

@@ -10,6 +10,10 @@ from src.api.schemas import (
 )
 
 from src.models.registry import ModelRegistry
+from src.monitoring.monitor import (
+    log_prediction,
+    get_prediction_summary
+)
 
 
 # ==================================================
@@ -202,12 +206,30 @@ def predict(customer: CustomerData):
                     probabilities[index]
                 )
 
+        prediction = str(prediction)
+
+        yes_probability = round(
+            float(yes_probability),
+            4
+        )
+
+        # ------------------------------------------
+        # LOG PREDICTION FOR MONITORING
+        # ------------------------------------------
+
+        log_prediction(
+            features=customer_data,
+            prediction=prediction,
+            churn_probability=yes_probability
+        )
+
+        # ------------------------------------------
+        # Return API response
+        # ------------------------------------------
+
         return PredictionResponse(
-            prediction=str(prediction),
-            churn_probability=round(
-                float(yes_probability),
-                4
-            )
+            prediction=prediction,
+            churn_probability=yes_probability
         )
 
     except Exception as error:
@@ -216,6 +238,34 @@ def predict(customer: CustomerData):
             status_code=500,
             detail=(
                 "Prediction failed: "
+                f"{str(error)}"
+            )
+        )
+
+
+# ==================================================
+# MONITORING ENDPOINT
+# ==================================================
+
+@app.get("/monitoring")
+def monitoring():
+
+    try:
+
+        summary = get_prediction_summary()
+
+        return {
+            "status": "monitoring_active",
+            "model": model_name,
+            "metrics": summary
+        }
+
+    except Exception as error:
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Monitoring failed: "
                 f"{str(error)}"
             )
         )
