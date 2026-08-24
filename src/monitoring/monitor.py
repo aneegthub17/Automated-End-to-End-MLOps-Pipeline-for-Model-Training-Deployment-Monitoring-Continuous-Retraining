@@ -2,10 +2,15 @@ from datetime import datetime
 from pathlib import Path
 import json
 
+import pandas as pd
 
-# ==================================================
+from src.config import DATASET_PATH
+from src.drift.detector import DataDriftDetector
+
+
+# ============================================================
 # MONITORING CONFIGURATION
-# ==================================================
+# ============================================================
 
 MONITORING_DIRECTORY = Path(
     "experiments/monitoring"
@@ -17,11 +22,14 @@ PREDICTION_LOG_FILE = (
 )
 
 
-# ==================================================
-# INITIALIZE MONITORING DIRECTORY
-# ==================================================
+# ============================================================
+# INITIALIZE MONITORING
+# ============================================================
 
 def initialize_monitoring():
+    """
+    Create the monitoring directory if it does not exist.
+    """
 
     MONITORING_DIRECTORY.mkdir(
         parents=True,
@@ -29,9 +37,9 @@ def initialize_monitoring():
     )
 
 
-# ==================================================
+# ============================================================
 # LOG PREDICTION
-# ==================================================
+# ============================================================
 
 def log_prediction(
     features,
@@ -42,18 +50,24 @@ def log_prediction(
     Store a prediction event in JSON Lines format.
 
     Each prediction contains:
-    - timestamp
-    - customer features
-    - model prediction
-    - churn probability
+        - timestamp
+        - customer features
+        - prediction
+        - churn probability
     """
 
     initialize_monitoring()
 
     prediction_record = {
-        "timestamp": datetime.now().astimezone().isoformat(),
+        "timestamp": (
+            datetime.now()
+            .astimezone()
+            .isoformat()
+        ),
         "features": features,
-        "prediction": str(prediction),
+        "prediction": str(
+            prediction
+        ),
         "churn_probability": float(
             churn_probability
         )
@@ -72,14 +86,13 @@ def log_prediction(
         )
 
 
-# ==================================================
-# LOAD PREDICTION LOG
-# ==================================================
+# ============================================================
+# LOAD PREDICTIONS
+# ============================================================
 
 def load_predictions():
     """
-    Load all prediction records from
-    the JSONL monitoring file.
+    Load all stored prediction records.
     """
 
     initialize_monitoring()
@@ -115,26 +128,20 @@ def load_predictions():
 
             except json.JSONDecodeError:
 
-                # Ignore malformed monitoring
-                # records instead of crashing
+                # Ignore malformed records
+                # instead of crashing monitoring.
                 continue
 
     return predictions
 
 
-# ==================================================
-# GENERATE PREDICTION SUMMARY
-# ==================================================
+# ============================================================
+# PREDICTION SUMMARY
+# ============================================================
 
 def get_prediction_summary():
     """
-    Generate aggregate monitoring metrics.
-
-    Returns:
-        total_predictions
-        average_churn_probability
-        predicted_churn
-        predicted_no_churn
+    Generate aggregate prediction metrics.
     """
 
     predictions = load_predictions()
@@ -152,10 +159,6 @@ def get_prediction_summary():
             "predicted_no_churn": 0
         }
 
-    # ----------------------------------------------
-    # Calculate average churn probability
-    # ----------------------------------------------
-
     probabilities = [
         float(
             record.get(
@@ -166,20 +169,19 @@ def get_prediction_summary():
         for record in predictions
     ]
 
-    average_churn_probability = (
+    average_probability = (
         sum(probabilities)
         / total_predictions
     )
-
-    # ----------------------------------------------
-    # Count predictions
-    # ----------------------------------------------
 
     predicted_churn = sum(
         1
         for record in predictions
         if str(
-            record.get("prediction")
+            record.get(
+                "prediction",
+                ""
+            )
         ).lower() == "yes"
     )
 
@@ -187,18 +189,17 @@ def get_prediction_summary():
         1
         for record in predictions
         if str(
-            record.get("prediction")
+            record.get(
+                "prediction",
+                ""
+            )
         ).lower() == "no"
     )
-
-    # ----------------------------------------------
-    # Return monitoring summary
-    # ----------------------------------------------
 
     return {
         "total_predictions": total_predictions,
         "average_churn_probability": round(
-            average_churn_probability,
+            average_probability,
             4
         ),
         "predicted_churn": predicted_churn,
@@ -206,50 +207,243 @@ def get_prediction_summary():
     }
 
 
-# ==================================================
-# PRINT MONITORING SUMMARY
-# ==================================================
+# ============================================================
+# DATA DRIFT MONITORING
+# ============================================================
 
-def print_prediction_summary():
+def get_drift_summary():
+    """
+    Compare the training/reference dataset with
+    production prediction features.
 
-    summary = get_prediction_summary()
+    The original training dataset acts as the
+    reference distribution.
+
+    Features received through the prediction API
+    act as current production data.
+    """
+
+    reference_data = pd.read_csv(
+        DATASET_PATH
+    )
+
+    predictions = load_predictions()
+
+    if not predictions:
+
+        return {
+            "status": "insufficient_data",
+            "message": (
+                "No production predictions "
+                "available for drift analysis."
+            )
+        }
+
+    production_records = []
+
+    for record in predictions:
+
+        features = record.get(
+            "features",
+            {}
+        )
+
+        if features:
+
+            production_records.append(
+                features
+            )
+
+    if not production_records:
+
+        return {
+            "status": "insufficient_data",
+            "message": (
+                "Production prediction records "
+                "do not contain feature data."
+            )
+        }
+
+    current_data = pd.DataFrame(
+        production_records
+    )
+
+    try:
+
+        detector = DataDriftDetector(
+            reference_data=reference_data,
+            current_data=current_data
+        )
+
+        return detector.analyze()
+
+    except ValueError as error:
+
+        return {
+            "status": "insufficient_data",
+            "message": str(error)
+        }
+
+
+# ============================================================
+# COMPLETE MONITORING SUMMARY
+# ============================================================
+
+def get_monitoring_summary():
+    """
+    Return prediction monitoring and
+    data drift monitoring together.
+    """
+
+    prediction_summary = (
+        get_prediction_summary()
+    )
+
+    drift_summary = (
+        get_drift_summary()
+    )
+
+    return {
+        "prediction_monitoring": (
+            prediction_summary
+        ),
+        "drift_monitoring": (
+            drift_summary
+        )
+    }
+
+
+# ============================================================
+# PRINT MONITORING REPORT
+# ============================================================
+
+def print_monitoring_report():
+    """
+    Display a complete monitoring report
+    in the terminal.
+    """
+
+    summary = get_monitoring_summary()
 
     print(
         "\n"
         "==================================================\n"
-        "             PREDICTION MONITORING\n"
+        "             MLOPS MONITORING REPORT\n"
         "=================================================="
     )
 
+    # --------------------------------------------------------
+    # Prediction Monitoring
+    # --------------------------------------------------------
+
+    print(
+        "\nPrediction Monitoring"
+    )
+
+    print(
+        "-" * 50
+    )
+
+    prediction = summary[
+        "prediction_monitoring"
+    ]
+
     print(
         f"Total Predictions        : "
-        f"{summary['total_predictions']}"
+        f"{prediction['total_predictions']}"
     )
 
     print(
         f"Average Churn Probability: "
-        f"{summary['average_churn_probability']}"
+        f"{prediction['average_churn_probability']}"
     )
 
     print(
         f"Predicted Churn          : "
-        f"{summary['predicted_churn']}"
+        f"{prediction['predicted_churn']}"
     )
 
     print(
         f"Predicted No Churn       : "
-        f"{summary['predicted_no_churn']}"
+        f"{prediction['predicted_no_churn']}"
+    )
+
+    # --------------------------------------------------------
+    # Drift Monitoring
+    # --------------------------------------------------------
+
+    print(
+        "\nData Drift Monitoring"
     )
 
     print(
-        "=================================================="
+        "-" * 50
+    )
+
+    drift = summary[
+        "drift_monitoring"
+    ]
+
+    if drift.get("status") == "insufficient_data":
+
+        print(
+            "Status: Insufficient production data"
+        )
+
+        print(
+            f"Message: "
+            f"{drift.get('message', '')}"
+        )
+
+    else:
+
+        print(
+            f"Overall Status           : "
+            f"{drift['overall_status']}"
+        )
+
+        print(
+            f"Stable Features          : "
+            f"{drift['stable_features']}"
+        )
+
+        print(
+            f"Moderate Drift Features  : "
+            f"{drift['moderate_drift_features']}"
+        )
+
+        print(
+            f"Significant Drift        : "
+            f"{drift['significant_drift_features']}"
+        )
+
+        print(
+            "\nFeature Drift Details"
+        )
+
+        print(
+            "-" * 50
+        )
+
+        for result in drift[
+            "feature_results"
+        ]:
+
+            print(
+                f"{result['feature']:<20}"
+                f" PSI: {result['psi']:<8}"
+                f" Status: {result['status']}"
+            )
+
+    print(
+        "=" * 50
     )
 
 
-# ==================================================
+# ============================================================
 # MAIN
-# ==================================================
+# ============================================================
 
 if __name__ == "__main__":
 
-    print_prediction_summary()
+    print_monitoring_report()

@@ -10,9 +10,10 @@ from src.api.schemas import (
 )
 
 from src.models.registry import ModelRegistry
+
 from src.monitoring.monitor import (
     log_prediction,
-    get_prediction_summary
+    get_monitoring_summary
 )
 
 
@@ -148,7 +149,9 @@ def predict(customer: CustomerData):
 
         raise HTTPException(
             status_code=503,
-            detail="Production model is not available."
+            detail=(
+                "Production model is not available."
+            )
         )
 
     try:
@@ -168,7 +171,7 @@ def predict(customer: CustomerData):
         )
 
         # ------------------------------------------
-        # Apply the SAME preprocessing pipeline
+        # Apply SAME preprocessing pipeline
         # ------------------------------------------
 
         processed_data = (
@@ -193,7 +196,6 @@ def predict(customer: CustomerData):
             processed_data
         )[0]
 
-        # Find probability corresponding to "Yes"
         yes_probability = 0.0
 
         for index, class_name in enumerate(
@@ -206,15 +208,23 @@ def predict(customer: CustomerData):
                     probabilities[index]
                 )
 
-        prediction = str(prediction)
+        # ------------------------------------------
+        # Normalize prediction values
+        # ------------------------------------------
+
+        prediction = str(
+            prediction
+        )
 
         yes_probability = round(
-            float(yes_probability),
+            float(
+                yes_probability
+            ),
             4
         )
 
         # ------------------------------------------
-        # LOG PREDICTION FOR MONITORING
+        # LOG PREDICTION
         # ------------------------------------------
 
         log_prediction(
@@ -252,12 +262,14 @@ def monitoring():
 
     try:
 
-        summary = get_prediction_summary()
+        summary = (
+            get_monitoring_summary()
+        )
 
         return {
             "status": "monitoring_active",
             "model": model_name,
-            "metrics": summary
+            "monitoring": summary
         }
 
     except Exception as error:

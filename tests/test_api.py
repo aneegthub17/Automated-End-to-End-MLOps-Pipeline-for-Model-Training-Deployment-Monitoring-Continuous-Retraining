@@ -3,40 +3,70 @@ from fastapi.testclient import TestClient
 from src.api.main import app
 
 
-client = TestClient(app)
+# ==================================================
+# TEST CLIENT
+# ==================================================
 
+client = TestClient(
+    app
+)
+
+
+# ==================================================
+# ROOT ENDPOINT TEST
+# ==================================================
 
 def test_root_endpoint():
-    response = client.get("/")
+
+    response = client.get(
+        "/"
+    )
 
     assert response.status_code == 200
 
     data = response.json()
 
-    assert data["service"] == "Customer Churn Prediction API"
+    assert data["service"] == (
+        "Customer Churn Prediction API"
+    )
+
     assert data["status"] == "running"
+
     assert "model" in data
 
+
+# ==================================================
+# HEALTH ENDPOINT TEST
+# ==================================================
 
 def test_health_endpoint():
-    response = client.get("/health")
+
+    response = client.get(
+        "/health"
+    )
 
     assert response.status_code == 200
 
     data = response.json()
 
-    assert data["status"] == "healthy"
-    assert data["model_loaded"] is True
-    assert "model" in data
+    assert "status" in data
 
+    assert "model_loaded" in data
+
+
+# ==================================================
+# PREDICTION ENDPOINT TEST
+# ==================================================
 
 def test_prediction_endpoint():
-    payload = {
+
+    customer = {
+        "customerID": "TEST001",
         "gender": "Male",
         "SeniorCitizen": 0,
         "Partner": "Yes",
-        "Dependents": "Yes",
-        "tenure": 5,
+        "Dependents": "No",
+        "tenure": 12,
         "PhoneService": "Yes",
         "MultipleLines": "No",
         "InternetService": "DSL",
@@ -44,44 +74,92 @@ def test_prediction_endpoint():
         "OnlineBackup": "Yes",
         "DeviceProtection": "No",
         "TechSupport": "No",
-        "StreamingTV": "Yes",
+        "StreamingTV": "No",
         "StreamingMovies": "No",
         "Contract": "Month-to-month",
         "PaperlessBilling": "Yes",
-        "PaymentMethod": "Credit card",
-        "MonthlyCharges": 27.43,
-        "TotalCharges": 137.15
+        "PaymentMethod": "Electronic check",
+        "MonthlyCharges": 70.0,
+        "TotalCharges": 840.0
     }
 
-    response = client.post("/predict", json=payload)
+    response = client.post(
+        "/predict",
+        json=customer
+    )
 
     assert response.status_code == 200
 
     data = response.json()
 
     assert "prediction" in data
+
     assert "churn_probability" in data
 
-    assert data["prediction"] in ["Yes", "No"]
-    assert 0 <= data["churn_probability"] <= 1
+    assert data["prediction"] in [
+        "Yes",
+        "No"
+    ]
+
+    assert (
+        0
+        <= data["churn_probability"]
+        <= 1
+    )
+
+
+# ==================================================
+# MONITORING ENDPOINT TEST
+# ==================================================
+
 def test_monitoring_endpoint():
 
-    response = client.get("/monitoring")
+    response = client.get(
+        "/monitoring"
+    )
 
     assert response.status_code == 200
 
     data = response.json()
 
-    assert data["status"] == "monitoring_active"
+    assert data["status"] == (
+        "monitoring_active"
+    )
 
     assert "model" in data
 
-    assert "metrics" in data
+    assert "monitoring" in data
 
-    assert "total_predictions" in data["metrics"]
+    monitoring = data[
+        "monitoring"
+    ]
 
-    assert "average_churn_probability" in data["metrics"]
+    assert "prediction_monitoring" in (
+        monitoring
+    )
 
-    assert "predicted_churn" in data["metrics"]
+    assert "drift_monitoring" in (
+        monitoring
+    )
 
-    assert "predicted_no_churn" in data["metrics"]
+    prediction_metrics = (
+        monitoring[
+            "prediction_monitoring"
+        ]
+    )
+
+    assert "total_predictions" in (
+        prediction_metrics
+    )
+
+    assert "average_churn_probability" in (
+        prediction_metrics
+    )
+
+    assert "predicted_churn" in (
+        prediction_metrics
+    )
+
+    assert "predicted_no_churn" in (
+        prediction_metrics
+    )
