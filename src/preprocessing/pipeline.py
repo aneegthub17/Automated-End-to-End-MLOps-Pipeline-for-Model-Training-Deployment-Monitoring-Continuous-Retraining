@@ -15,16 +15,16 @@ class DataPreprocessor:
 
     def split_features_target(self):
 
-     X = self.df.drop(
-        columns=[
-            TARGET_COLUMN,
-            "customerID"
+        X = self.df.drop(
+            columns=[
+                TARGET_COLUMN,
+                "customerID"
             ]
-    )
+        )
 
-     y = self.df[TARGET_COLUMN]
+        y = self.df[TARGET_COLUMN]
 
-     return X, y
+        return X, y
 
     def identify_columns(self, X):
 
@@ -37,68 +37,85 @@ class DataPreprocessor:
         ).columns.tolist()
 
         return numerical_columns, categorical_columns
-    def build_pipeline(self, numerical_columns, categorical_columns):
+
+    def build_pipeline(
+        self,
+        numerical_columns,
+        categorical_columns
+    ):
+
         numerical_pipeline = Pipeline(
             steps=[
-                ("scaler", StandardScaler())
+                (
+                    "scaler",
+                    StandardScaler()
+                )
             ]
         )
+
         categorical_pipeline = Pipeline(
             steps=[
                 (
                     "encoder",
-                    OneHotEncoder(handle_unknown="ignore")
+                    OneHotEncoder(
+                        handle_unknown="ignore"
+                    )
                 )
             ]
         )
+
         preprocessor = ColumnTransformer(
-
             transformers=[
-
                 (
                     "num",
                     numerical_pipeline,
                     numerical_columns
                 ),
-
                 (
                     "cat",
                     categorical_pipeline,
                     categorical_columns
                 )
             ]
-            
         )
+
         return preprocessor
-    def preprocess(self):
+
+    def split_data(self, test_size=0.2):
+
         X, y = self.split_features_target()
-        numerical_columns, categorical_columns = self.identify_columns(X)
+
+        X_train, X_test, y_train, y_test = train_test_split(
+            X,
+            y,
+            test_size=test_size,
+            random_state=RANDOM_STATE,
+            stratify=y
+        )
+
+        return X_train, X_test, y_train, y_test
+
+    def preprocess(self, X_train, X_test):
+
+        numerical_columns, categorical_columns = (
+            self.identify_columns(X_train)
+        )
+
         preprocessor = self.build_pipeline(
             numerical_columns,
             categorical_columns
         )
-        X_processed = preprocessor.fit_transform(X)
-        return (
-            X_processed,
-            y,
-            preprocessor
+
+        X_train_processed = preprocessor.fit_transform(
+            X_train
         )
 
+        X_test_processed = preprocessor.transform(
+            X_test
+        )
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    
+        return (
+            X_train_processed,
+            X_test_processed,
+            preprocessor
+        )
