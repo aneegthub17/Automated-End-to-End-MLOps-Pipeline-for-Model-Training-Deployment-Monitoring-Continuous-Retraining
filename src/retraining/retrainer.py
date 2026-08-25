@@ -2,6 +2,7 @@ from pathlib import Path
 from datetime import datetime
 
 from src.monitoring.monitor import get_drift_summary
+from src.models.registry import ModelRegistry
 
 
 # ============================================================
@@ -16,6 +17,8 @@ SIGNIFICANT_DRIFT_STATUS = (
     "Significant Drift"
 )
 
+F1_COMPARISON_TOLERANCE = 0.0001
+
 
 # ============================================================
 # RETRAINING MANAGER
@@ -23,11 +26,22 @@ SIGNIFICANT_DRIFT_STATUS = (
 
 class RetrainingManager:
     """
-    Controls automated model retraining based on
-    detected production data drift.
+    Controls automated model retraining.
+
+    Workflow:
+
+        1. Detect significant drift
+        2. Load current production model
+        3. Train candidate model
+        4. Evaluate candidate
+        5. Compare candidate against production
+        6. Promote only when candidate is meaningfully better
+        7. Keep production when candidate is equal or worse
     """
 
     def __init__(self):
+
+        self.registry = ModelRegistry()
 
         self.production_directory = (
             PRODUCTION_MODEL_DIRECTORY
@@ -82,7 +96,7 @@ class RetrainingManager:
         }
 
     # ========================================================
-    # GET PRODUCTION MODEL ARTIFACTS
+    # GET PRODUCTION MODELS
     # ========================================================
 
     def get_production_models(self):
@@ -98,31 +112,101 @@ class RetrainingManager:
         )
 
     # ========================================================
-    # RUN EXISTING TRAINING PIPELINE
+    # LOAD CURRENT PRODUCTION MODEL
     # ========================================================
 
-    def run_training_pipeline(self):
+    def load_current_production(self):
+
+        models = (
+            self.get_production_models()
+        )
+
+        if not models:
+
+            return None
+
+        latest_model = max(
+            models,
+            key=lambda path: path.stat().st_mtime
+        )
+
+        model_name = (
+            latest_model.name.replace(
+                "_production.joblib",
+                ""
+            )
+        )
+
+        artifact = (
+            self.registry.load_model(
+                model_name
+            )
+        )
+
+        return {
+            "path": latest_model,
+            "model_name": model_name,
+            "artifact": artifact
+        }
+
+    # ========================================================
+    # GET CURRENT PRODUCTION F1
+    # ========================================================
+
+    def get_production_f1(
+        self,
+        production
+    ):
+
+        if production is None:
+
+            return None
+
+        artifact = production[
+            "artifact"
+        ]
+
+        metrics = artifact.get(
+            "metrics",
+            {}
+        )
+
+        f1 = metrics.get(
+            "f1"
+        )
+
+        if f1 is None:
+
+            return None
+
+        return float(
+            f1
+        )
+
+    # ========================================================
+    # TRAIN CANDIDATE MODEL
+    # ========================================================
+
+    def train_candidate(self):
 
         print(
             "\n"
             "==================================================\n"
-            "           AUTOMATED MODEL RETRAINING\n"
+            "           CANDIDATE MODEL TRAINING\n"
             "=================================================="
         )
 
         print(
-            "\n⚠ Significant data drift detected."
-        )
-
-        print(
-            "Starting existing training pipeline..."
+            "\nTraining candidate model..."
         )
 
         try:
 
             from src.main import main
 
-            result = main()
+            result = main(
+                save_production=False
+            )
 
             return {
                 "success": True,
@@ -137,71 +221,202 @@ class RetrainingManager:
             }
 
     # ========================================================
-    # VERIFY PRODUCTION ARTIFACT
+    # COMPARE MODELS
     # ========================================================
 
-    def verify_production_model(
+    def compare_models(
         self,
-        previous_models
+        production_f1,
+        candidate_f1
     ):
+        """
+        Compare candidate F1 against production F1.
 
-        current_models = (
-            self.get_production_models()
-        )
+        A candidate must improve F1 by more than the
+        configured tolerance to be promoted.
 
-        if not current_models:
+        Example:
+
+            Production = 0.43137
+            Candidate  = 0.43140
+
+        Difference:
+
+            0.000027
+
+        Since this is below 0.0001, the models are treated
+        as equal and the candidate is rejected.
+        """
+
+        if candidate_f1 is None:
 
             return {
-                "verified": False,
-                "message": (
-                    "No production model "
-                    "artifact found after "
-                    "retraining."
+                "candidate_better": False,
+                "reason": (
+                    "Candidate F1 score is "
+                    "not available."
                 )
             }
 
-        previous_paths = {
-            str(
-                path.resolve()
-            )
-            for path in previous_models
-        }
+        candidate_f1 = float(
+            candidate_f1
+        )
 
-        new_models = [
-            path
-            for path in current_models
-            if str(
-                path.resolve()
-            ) not in previous_paths
-        ]
-
-        if new_models:
+        if production_f1 is None:
 
             return {
-                "verified": True,
-                "message": (
-                    "New production model "
-                    "artifact created."
-                ),
-                "new_models": [
-                    str(path)
-                    for path in new_models
-                ]
+                "candidate_better": True,
+                "reason": (
+                    "No production F1 score "
+                    "is available. Candidate "
+                    "will be promoted."
+                )
             }
 
-        latest_model = max(
-            current_models,
-            key=lambda path: path.stat().st_mtime
+        production_f1 = float(
+            production_f1
+        )
+
+        difference = (
+            candidate_f1
+            - production_f1
+        )
+
+        if difference > (
+            F1_COMPARISON_TOLERANCE
+        ):
+
+            return {
+                "candidate_better": True,
+                "reason": (
+                    "Candidate F1 score is "
+                    "meaningfully better "
+                    "than production."
+                ),
+                "f1_difference": round(
+                    difference,
+                    6
+                )
+            }
+
+        if abs(difference) <= (
+            F1_COMPARISON_TOLERANCE
+        ):
+
+            return {
+                "candidate_better": False,
+                "reason": (
+                    "Candidate F1 score is "
+                    "effectively equal to "
+                    "production."
+                ),
+                "f1_difference": round(
+                    difference,
+                    6
+                )
+            }
+
+        return {
+            "candidate_better": False,
+            "reason": (
+                "Candidate F1 score is "
+                "lower than production."
+            ),
+            "f1_difference": round(
+                difference,
+                6
+            )
+        }
+
+    # ========================================================
+    # PROMOTE CANDIDATE MODEL
+    # ========================================================
+
+    def promote_candidate(
+        self,
+        candidate
+    ):
+
+        candidate_result = (
+            candidate[
+                "result"
+            ]
+        )
+
+        candidate_model = (
+            candidate_result[
+                "best_model"
+            ]
+        )
+
+        candidate_model_name = (
+            candidate_result[
+                "best_model_name"
+            ]
+        )
+
+        candidate_metrics = (
+            candidate_result[
+                "best_metrics"
+            ]
+        )
+
+        candidate_preprocessor = (
+            candidate_result[
+                "preprocessing_pipeline"
+            ]
+        )
+
+        print(
+            "\n"
+            "==================================================\n"
+            "             MODEL PROMOTION\n"
+            "=================================================="
+        )
+
+        print(
+            "\nPromoting candidate model..."
+        )
+
+        production_path = (
+            self.registry.save_model(
+                model=candidate_model,
+                preprocessor=(
+                    candidate_preprocessor
+                ),
+                model_name=(
+                    candidate_model_name
+                ),
+                metrics=candidate_metrics
+            )
+        )
+
+        print(
+            "\n✅ Candidate model promoted "
+            "to production."
+        )
+
+        print(
+            f"Production Model : "
+            f"{candidate_model_name}"
+        )
+
+        print(
+            f"Production F1    : "
+            f"{candidate_metrics['f1']:.4f}"
+        )
+
+        print(
+            f"Artifact         : "
+            f"{production_path}"
         )
 
         return {
-            "verified": True,
-            "message": (
-                "Production model artifact "
-                "updated successfully."
-            ),
-            "latest_model": str(
-                latest_model
+            "promoted": True,
+            "model_name": candidate_model_name,
+            "metrics": candidate_metrics,
+            "production_path": str(
+                production_path
             )
         }
 
@@ -221,7 +436,7 @@ class RetrainingManager:
         )
 
         # ----------------------------------------------------
-        # Check current drift
+        # STEP 1 — CHECK DRIFT
         # ----------------------------------------------------
 
         decision = (
@@ -240,7 +455,8 @@ class RetrainingManager:
         )
 
         print(
-            f"\nDrift Status : {drift_status}"
+            f"\nDrift Status : "
+            f"{drift_status}"
         )
 
         print(
@@ -249,7 +465,7 @@ class RetrainingManager:
         )
 
         # ----------------------------------------------------
-        # Stop when retraining isn't required
+        # STEP 2 — STOP IF RETRAINING NOT REQUIRED
         # ----------------------------------------------------
 
         if not decision[
@@ -269,85 +485,202 @@ class RetrainingManager:
             }
 
         # ----------------------------------------------------
-        # Capture current production models
+        # STEP 3 — LOAD CURRENT PRODUCTION
         # ----------------------------------------------------
 
-        previous_models = (
-            self.get_production_models()
+        production = (
+            self.load_current_production()
+        )
+
+        production_f1 = (
+            self.get_production_f1(
+                production
+            )
         )
 
         print(
-            "\nCurrent production models:"
+            "\nCurrent Production Model"
         )
 
-        if previous_models:
+        if production is None:
 
-            for model in previous_models:
+            print(
+                "Model : None"
+            )
 
-                print(
-                    f"  - {model}"
-                )
+            print(
+                "F1    : None"
+            )
 
         else:
 
             print(
-                "  No production models found."
+                f"Model : "
+                f"{production['model_name']}"
+            )
+
+            print(
+                f"F1    : "
+                f"{production_f1:.6f}"
             )
 
         # ----------------------------------------------------
-        # Run training
+        # STEP 4 — TRAIN CANDIDATE
         # ----------------------------------------------------
 
-        training_result = (
-            self.run_training_pipeline()
+        candidate = (
+            self.train_candidate()
         )
 
-        if not training_result[
+        if not candidate[
             "success"
         ]:
 
             print(
-                "\n❌ Retraining failed."
+                "\n❌ Candidate training failed."
             )
 
             return {
                 "status": "failed",
                 "reason": (
-                    "Training pipeline "
+                    "Candidate training "
                     "failed."
                 ),
-                "error": training_result[
+                "error": candidate[
                     "error"
                 ]
             }
 
         # ----------------------------------------------------
-        # Verify production model
+        # STEP 5 — GET CANDIDATE METRICS
         # ----------------------------------------------------
 
-        verification = (
-            self.verify_production_model(
-                previous_models
+        candidate_result = (
+            candidate[
+                "result"
+            ]
+        )
+
+        candidate_model_name = (
+            candidate_result[
+                "best_model_name"
+            ]
+        )
+
+        candidate_metrics = (
+            candidate_result[
+                "best_metrics"
+            ]
+        )
+
+        candidate_f1 = (
+            float(
+                candidate_metrics[
+                    "f1"
+                ]
             )
         )
 
-        if not verification[
-            "verified"
-        ]:
+        print(
+            "\nCandidate Model"
+        )
 
-            print(
-                "\n❌ Retraining completed, "
-                "but production artifact "
-                "verification failed."
-            )
+        print(
+            f"Model : "
+            f"{candidate_model_name}"
+        )
 
-            return {
-                "status": "verification_failed",
-                "verification": verification
-            }
+        print(
+            f"F1    : "
+            f"{candidate_f1:.6f}"
+        )
 
         # ----------------------------------------------------
-        # Calculate duration
+        # STEP 6 — COMPARE
+        # ----------------------------------------------------
+
+        comparison = (
+            self.compare_models(
+                production_f1,
+                candidate_f1
+            )
+        )
+
+        print(
+            "\nModel Comparison"
+        )
+
+        if production_f1 is not None:
+
+            print(
+                f"Production F1 : "
+                f"{production_f1:.6f}"
+            )
+
+        else:
+
+            print(
+                "Production F1 : None"
+            )
+
+        print(
+            f"Candidate F1  : "
+            f"{candidate_f1:.6f}"
+        )
+
+        if (
+            "f1_difference"
+            in comparison
+        ):
+
+            print(
+                f"Difference    : "
+                f"{comparison['f1_difference']:.6f}"
+            )
+
+        print(
+            f"Decision      : "
+            f"{comparison['reason']}"
+        )
+
+        # ----------------------------------------------------
+        # STEP 7 — PROMOTE ONLY IF BETTER
+        # ----------------------------------------------------
+
+        if comparison[
+            "candidate_better"
+        ]:
+
+            promotion = (
+                self.promote_candidate(
+                    candidate
+                )
+            )
+
+            status = "promoted"
+
+        else:
+
+            print(
+                "\n❌ Candidate model rejected."
+            )
+
+            print(
+                "Existing production model "
+                "will remain active."
+            )
+
+            promotion = {
+                "promoted": False,
+                "reason": comparison[
+                    "reason"
+                ]
+            }
+
+            status = "rejected"
+
+        # ----------------------------------------------------
+        # STEP 8 — FINAL RESULT
         # ----------------------------------------------------
 
         duration = (
@@ -356,21 +689,39 @@ class RetrainingManager:
         ).total_seconds()
 
         print(
-            "\n✅ RETRAINING COMPLETED"
+            "\n"
+            "==================================================\n"
+            "              RETRAINING RESULT\n"
+            "=================================================="
         )
 
         print(
-            f"Duration : {duration:.2f} seconds"
+            f"Status           : "
+            f"{status}"
         )
 
         print(
-            verification[
-                "message"
-            ]
+            f"Duration         : "
+            f"{duration:.2f} seconds"
+        )
+
+        print(
+            f"Production F1    : "
+            f"{production_f1}"
+        )
+
+        print(
+            f"Candidate F1     : "
+            f"{candidate_f1:.6f}"
+        )
+
+        print(
+            f"Candidate Better : "
+            f"{comparison['candidate_better']}"
         )
 
         return {
-            "status": "retrained",
+            "status": status,
             "reason": decision[
                 "reason"
             ],
@@ -379,37 +730,35 @@ class RetrainingManager:
                 2
             ),
             "drift_summary": drift_summary,
-            "verification": verification
+            "production_f1": production_f1,
+            "candidate_model": (
+                candidate_model_name
+            ),
+            "candidate_f1": candidate_f1,
+            "candidate_better": (
+                comparison[
+                    "candidate_better"
+                ]
+            ),
+            "comparison_reason": (
+                comparison[
+                    "reason"
+                ]
+            ),
+            "promotion": promotion
         }
 
 
 # ============================================================
-# MAIN
+# SCRIPT ENTRY POINT
 # ============================================================
 
 def main():
 
     manager = RetrainingManager()
 
-    result = manager.execute()
+    return manager.execute()
 
-    print(
-        "\n"
-        "==================================================\n"
-        "              RETRAINING RESULT\n"
-        "=================================================="
-    )
-
-    print(
-        result
-    )
-
-    return result
-
-
-# ============================================================
-# SCRIPT ENTRY POINT
-# ============================================================
 
 if __name__ == "__main__":
 

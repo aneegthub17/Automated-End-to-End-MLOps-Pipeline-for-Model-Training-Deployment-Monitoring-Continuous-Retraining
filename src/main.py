@@ -11,21 +11,61 @@ from src.models.registry import ModelRegistry
 from src.training.mlflow_tracker import MLflowTracker
 
 
-def main():
+# ==================================================
+# MAIN TRAINING PIPELINE
+# ==================================================
+
+def main(
+    save_production=True
+):
+    """
+    Execute the complete MLOps training pipeline.
+
+    Parameters
+    ----------
+    save_production : bool
+        If True, the selected model is saved directly
+        as the production model.
+
+        If False, the model is trained and evaluated,
+        but production promotion is skipped.
+
+        The latter mode is used by automated retraining
+        so that the candidate model can be compared
+        against the existing production model first.
+
+    Returns
+    -------
+    dict
+        Training results containing:
+
+        - best_model_name
+        - best_model
+        - best_metrics
+        - all_results
+        - preprocessing_pipeline
+        - production_model_path
+    """
 
     # ==================================================
     # PIPELINE HEADER
     # ==================================================
 
     print("=" * 60)
-    print("             Enterprise MLOps Pipeline")
+
+    print(
+        "             Enterprise MLOps Pipeline"
+    )
+
     print("=" * 60)
 
     # ==================================================
     # 1. DATA INGESTION
     # ==================================================
 
-    print("\n[1/9] DATA INGESTION")
+    print(
+        "\n[1/9] DATA INGESTION"
+    )
 
     loader = DataLoader(
         DATASET_PATH
@@ -41,7 +81,9 @@ def main():
     # 2. DATA VALIDATION
     # ==================================================
 
-    print("\n[2/9] DATA VALIDATION")
+    print(
+        "\n[2/9] DATA VALIDATION"
+    )
 
     validator = DataValidator(
         df
@@ -53,7 +95,9 @@ def main():
     # 3. DATA PROFILING
     # ==================================================
 
-    print("\n[3/9] DATA PROFILING")
+    print(
+        "\n[3/9] DATA PROFILING"
+    )
 
     profiler = DataProfiler(
         df
@@ -65,7 +109,9 @@ def main():
     # 4. TRAIN / TEST SPLIT
     # ==================================================
 
-    print("\n[4/9] DATA SPLITTING")
+    print(
+        "\n[4/9] DATA SPLITTING"
+    )
 
     preprocessor = DataPreprocessor(
         df
@@ -79,26 +125,32 @@ def main():
     ) = preprocessor.split_data()
 
     print(
-        f"Training Samples : {X_train.shape[0]}"
+        f"Training Samples : "
+        f"{X_train.shape[0]}"
     )
 
     print(
-        f"Testing Samples  : {X_test.shape[0]}"
+        f"Testing Samples  : "
+        f"{X_test.shape[0]}"
     )
 
     print(
-        f"Training Features: {X_train.shape[1]}"
+        f"Training Features: "
+        f"{X_train.shape[1]}"
     )
 
     print(
-        f"Testing Features : {X_test.shape[1]}"
+        f"Testing Features : "
+        f"{X_test.shape[1]}"
     )
 
     # ==================================================
     # 5. DATA PREPROCESSING
     # ==================================================
 
-    print("\n[5/9] DATA PREPROCESSING")
+    print(
+        "\n[5/9] DATA PREPROCESSING"
+    )
 
     (
         X_train_processed,
@@ -127,7 +179,9 @@ def main():
     # 6. MODEL TRAINING
     # ==================================================
 
-    print("\n[6/9] MODEL TRAINING")
+    print(
+        "\n[6/9] MODEL TRAINING"
+    )
 
     trainer = ModelTrainer()
 
@@ -140,7 +194,9 @@ def main():
     # 7. MODEL EVALUATION
     # ==================================================
 
-    print("\n[7/9] MODEL EVALUATION")
+    print(
+        "\n[7/9] MODEL EVALUATION"
+    )
 
     evaluator = ModelEvaluator()
 
@@ -155,9 +211,18 @@ def main():
     # ==================================================
 
     print("\n")
-    print("=" * 60)
-    print("                 MODEL RESULTS")
-    print("=" * 60)
+
+    print(
+        "=" * 60
+    )
+
+    print(
+        "                 MODEL RESULTS"
+    )
+
+    print(
+        "=" * 60
+    )
 
     for model_name, metrics in results.items():
 
@@ -165,7 +230,9 @@ def main():
             f"\n{model_name.upper()}"
         )
 
-        print("-" * 40)
+        print(
+            "-" * 40
+        )
 
         print(
             f"Accuracy  : "
@@ -210,12 +277,22 @@ def main():
     ]
 
     print("\n")
-    print("=" * 60)
-    print("                  BEST MODEL")
-    print("=" * 60)
 
     print(
-        f"\nModel     : {best_model_name}"
+        "=" * 60
+    )
+
+    print(
+        "                  BEST MODEL"
+    )
+
+    print(
+        "=" * 60
+    )
+
+    print(
+        f"\nModel     : "
+        f"{best_model_name}"
     )
 
     print(
@@ -247,7 +324,9 @@ def main():
     # 8. MLFLOW EXPERIMENT TRACKING
     # ==================================================
 
-    print("\n[8/9] MLFLOW EXPERIMENT TRACKING")
+    print(
+        "\n[8/9] MLFLOW EXPERIMENT TRACKING"
+    )
 
     tracker = MLflowTracker()
 
@@ -263,7 +342,8 @@ def main():
     for model_name, model in models.items():
 
         print(
-            f"\nLogging run: {model_name}"
+            f"\nLogging run: "
+            f"{model_name}"
         )
 
         tracker.start_run(
@@ -279,7 +359,8 @@ def main():
             )
 
             print(
-                f"✓ {model_name} logged to MLflow."
+                f"✓ {model_name} "
+                f"logged to MLflow."
             )
 
         finally:
@@ -318,69 +399,138 @@ def main():
     # 9. PRODUCTION MODEL REGISTRY
     # ==================================================
 
-    print("\n[9/9] PRODUCTION MODEL REGISTRY")
-
-    registry = ModelRegistry()
-
-    production_model_path = registry.save_model(
-        model=best_model,
-        preprocessor=preprocessing_pipeline,
-        model_name=best_model_name,
-        metrics=best_metrics
-    )
-
-    # --------------------------------------------------
-    # Verify that the artifact can be loaded
-    # --------------------------------------------------
-
     print(
-        "\nVerifying production artifact..."
+        "\n[9/9] PRODUCTION MODEL REGISTRY"
     )
 
-    loaded_artifact = registry.load_model(
-        best_model_name
-    )
+    production_model_path = None
 
-    print(
-        "\n✓ Production artifact verification successful."
-    )
+    if save_production:
 
-    print(
-        f"Loaded Model : "
-        f"{loaded_artifact['model_name']}"
-    )
+        registry = ModelRegistry()
 
-    print(
-        "✓ Preprocessor loaded successfully."
-    )
+        production_model_path = (
+            registry.save_model(
+                model=best_model,
+                preprocessor=preprocessing_pipeline,
+                model_name=best_model_name,
+                metrics=best_metrics
+            )
+        )
 
-    print(
-        "✓ Model loaded successfully."
-    )
+        # --------------------------------------------------
+        # Verify production artifact
+        # --------------------------------------------------
+
+        print(
+            "\nVerifying production artifact..."
+        )
+
+        loaded_artifact = (
+            registry.load_model(
+                best_model_name
+            )
+        )
+
+        print(
+            "\n✓ Production artifact "
+            "verification successful."
+        )
+
+        print(
+            f"Loaded Model : "
+            f"{loaded_artifact['model_name']}"
+        )
+
+        print(
+            "✓ Preprocessor loaded "
+            "successfully."
+        )
+
+        print(
+            "✓ Model loaded successfully."
+        )
+
+    else:
+
+        print(
+            "\n⚠ Production promotion skipped."
+        )
+
+        print(
+            "Candidate model will be evaluated "
+            "before promotion."
+        )
 
     # ==================================================
     # COMPLETION
     # ==================================================
 
     print("\n")
-    print("=" * 60)
-    print(
-        "       COMPLETE MLOPS TRAINING PIPELINE"
-    )
-    print("=" * 60)
 
     print(
-        "\nProduction Artifact:"
+        "=" * 60
     )
 
+    if save_production:
+
+        print(
+            "       COMPLETE MLOPS TRAINING PIPELINE"
+        )
+
+    else:
+
+        print(
+            "       COMPLETE CANDIDATE TRAINING PIPELINE"
+        )
+
     print(
-        f"{production_model_path}"
+        "=" * 60
     )
+
+    if production_model_path:
+
+        print(
+            "\nProduction Artifact:"
+        )
+
+        print(
+            production_model_path
+        )
+
+    else:
+
+        print(
+            "\nCandidate model was trained "
+            "but not promoted."
+        )
 
     print(
         "\nPipeline completed successfully."
     )
 
+    # ==================================================
+    # RETURN TRAINING RESULTS
+    # ==================================================
+
+    return {
+        "best_model_name": best_model_name,
+        "best_model": best_model,
+        "best_metrics": best_metrics,
+        "all_results": results,
+        "preprocessing_pipeline": (
+            preprocessing_pipeline
+        ),
+        "production_model_path": (
+            production_model_path
+        )
+    }
+
+
+# ==================================================
+# SCRIPT ENTRY POINT
+# ==================================================
 
 if __name__ == "__main__":
+
     main()
